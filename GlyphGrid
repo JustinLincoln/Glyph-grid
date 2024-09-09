@@ -1,1 +1,207 @@
+import themidibus.*; // Import the library
+float cc[] = new float[256];
+MidiBus myBus; // The MidiBus
+int savedTime;
+int totalTime = 1000;  // Time in milliseconds between image changes (1 second)
+PImage[] images;
+PImage[] assignedImages;  // To store the random images assigned to each cell
+int cols = 4;  // Number of columns in the grid
+int rows = 8;  // Number of rows in the grid
+float sz = 200;  // Size of each grid cell
+float asz = 195;  // Actual displayed size of each image
 
+// Arrays to store unique rotation speeds and directions for each cell
+float[] rotationSpeeds;
+float[] rotationDirections;
+
+boolean blackAndWhiteMode = true;  // Start in black and white mode
+
+void setup() {
+  //size(1080, 1920, P3D);
+  fullScreen(P3D);
+  MidiBus.list();  // Shows controllers in the console
+  myBus = new MidiBus(this, "Bluetooth", "Bluetooth");  // Input and output
+  if (myBus == null) {
+    println("MIDI bus initialization failed. Check device names.");
+  } else {
+    println("MIDI bus initialized successfully.");
+  }
+
+  for (int i = 16; i < 24; i++) {  // Sets only the knobs (16-23) to be max @ start
+    cc[i] = 127;
+  }
+  pixelDensity(2);
+  hint(DISABLE_DEPTH_TEST);
+
+  savedTime = millis();
+  noCursor();
+ frameRate(25);
+  String path = sketchPath() + "/data/";
+
+  // List the files inside the folder
+  String[] filenames = listFileNames(path);
+  printArray(filenames);
+
+  StringList imageFilenames = new StringList();
+  for (int i = 0; i < filenames.length; i++) {
+    if (filenames[i].contains(".tiff") || filenames[i].contains(".png")) {
+      imageFilenames.append(filenames[i]);
+    }
+  }
+
+  imageMode(CENTER);
+  images = new PImage[imageFilenames.size()];
+
+  for (int i = 0; i < images.length; i++) {
+    images[i] = loadImage(imageFilenames.get(i));
+  }
+
+  // Initialize arrays to store random images, rotation speeds, and directions for each cell
+  int numCells = cols * rows;  // Total number of cells in the grid
+  assignedImages = new PImage[numCells];
+  rotationSpeeds = new float[numCells];
+  rotationDirections = new float[numCells];
+
+  // Assign random images, rotation speeds, and directions to each cell
+  for (int i = 0; i < numCells; i++) {
+    assignedImages[i] = images[int(random(0, images.length))];  // Random image for each cell
+    rotationSpeeds[i] = random(0.01, 0.05);  // Random rotation speed for each cell
+    rotationDirections[i] = random(1) > 0.5 ? 1 : -1;  // Random direction (-1 for counterclockwise, 1 for clockwise)
+  }
+
+ // noStroke();
+}
+
+void toggleTintMode() {
+  blackAndWhiteMode = !blackAndWhiteMode;  // Toggle between true and false
+}
+
+void draw() {
+// Update grid size based on MIDI input
+  int newCols = (int)(map(cc[15], 0, 127, 1, 8));
+  int newRows = (int)(map(cc[16], 0, 127, 3, 12));
+  float ssz = map(cc[13], 0, 127, 0.5, 3);
+
+  // Only reallocate arrays if the new number of cells exceeds the current size
+  if (newCols * newRows > assignedImages.length) {
+    int numCells = newCols * newRows;
+    assignedImages = new PImage[numCells];
+    rotationSpeeds = new float[numCells];
+    rotationDirections = new float[numCells];
+
+    // Assign random images, rotation speeds, and directions to each cell
+    for (int i = 0; i < numCells; i++) {
+      assignedImages[i] = images[int(random(0, images.length))];
+      rotationSpeeds[i] = random(0.01, 0.05);
+      rotationDirections[i] = random(1) > 0.5 ? 1 : -1;
+    }
+  } else {
+    cols = newCols;
+    rows = newRows;
+  }
+
+
+
+
+
+  float waver = map(sin(radians(frameCount / 2)), -1, 1, 150, 255);
+  float waveg = map(sin(radians(frameCount / .5)), -1, 1, 150, 255);
+  float waveb = map(sin(radians(frameCount / 1)), -1, 1, 150, 255);
+  float fade = map(cc[14], 0, 127, 1, 250);
+int bgColor = (int) map(cc[4], 0, 127, 0, 255);  // Map MIDI controller value to color intensity
+
+  fill(bgColor, fade);
+  rect(0, 0, width, height);
+
+  // Calculate grid offsets to center the grid in the window
+  float spacing = map(cc[17], 0, 127, 4, 200);
+  float gridXOffset = (width - cols * spacing) / 2;
+  float gridYOffset = (height - rows * spacing) / 2;
+
+  // Loop over the grid and display the images
+  int index = 0;  // To track which cell we're on
+
+  for (int i = 0; i < cols; i++) {
+    for (int j = 0; j < rows; j++) {
+      pushMatrix();
+
+      // Move to the grid cell location, considering the centering offsets
+      translate(gridXOffset + i * sz + sz / 2, gridYOffset + j * sz + sz / 2, 0);
+
+      // Apply rotation
+      float rotationXSpeedMultiplier = map(cc[19], 0, 127, 0, 5);  // Map to rotation speed multiplier
+      float rotationYSpeedMultiplier = map(cc[20], 0, 127, 0, 5);
+      rotateX(frameCount * rotationSpeeds[index] * rotationDirections[index] * rotationXSpeedMultiplier);
+      rotateY(frameCount * rotationSpeeds[index] * rotationDirections[index] * rotationYSpeedMultiplier);
+float imageAlpha = map(cc[18], 0, 127, 0, 255);  // Map to transparency
+int tintGrayscale = (int) map(cc[5], 0, 127, 0, 255);  // Map MIDI controller value to color intensity
+
+tint(tintGrayscale ,imageAlpha);  // Set alpha value for images
+      // Apply tint based on the current mode
+      if (blackAndWhiteMode) {
+        tint(tintGrayscale,imageAlpha);  // Black and white mode (no color tint)
+      } else {
+        tint(random(150,imageAlpha), random(150, 255), random(150, 255));  // Random tint
+      }
+float aspectRatio = map(cc[3], 0, 127, 0.5, 2);  // Map to aspect ratio
+scale(aspectRatio, 1); 
+      // Display the image
+      image(assignedImages[index], 0, 0, asz * ssz, asz *ssz);
+
+      popMatrix();
+
+      index++;  // Move to the next grid cell
+    }
+  }
+
+  // Swap images at specified frequency
+  int swapFrequency = (int) map(cc[2], 0, 127, 100, 5000);  // Map to swap frequency (in milliseconds)
+  if (millis() - savedTime > swapFrequency) {
+    randomizeImages();  // Randomize images at the specified frequency
+    savedTime = millis();
+  }
+}
+
+void randomizeImages() {
+  for (int i = 0; i < assignedImages.length; i++) {
+    assignedImages[i] = images[int(random(0, images.length))];  // Assign random image to each cell
+    rotationSpeeds[i] = random(0.01, 0.05);  // Assign random rotation speed for each cell
+    rotationDirections[i] = random(1) > 0.5 ? 1 : -1;  // Assign random rotation direction
+  }
+}
+
+// This function returns all the files in a folder as an array of Strings  
+String[] listFileNames(String dir) {
+  File file = new File(dir);
+  if (file.isDirectory()) {
+    String names[] = file.list();
+    return names;
+  } else {
+    // If it's not a folder
+    return null;
+  }
+}
+
+void controllerChange(int channel, int number, int value) {
+  // Receive a controllerChange
+  println();
+  println("Controller Change:");
+  println("--------");
+ // println("Channel:" + channel);
+  println("Number:" + number);
+  println("Value:" + value);
+ println("Frame rate:" + frameRate);
+
+  // Save the MIDI controller value
+  cc[number] = value;
+
+  // Toggle the tint mode when MIDI value from controller 62 reaches 127
+  if (number == 62 && value == 127) {
+    toggleTintMode();
+    }
+    
+      // Add a quit button functionality (use cc[63])
+  if (number == 63 && value == 127) {
+    exit();  // Quit the sketch
+  }
+}
